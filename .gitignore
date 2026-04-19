@@ -13,6 +13,8 @@ ChunkMapAllocatorDesign.docx
 *.jpeg
 *.jpg
 *.png
+*.svg
+*.docx
 *.o
 *.a
 compile_commands.json

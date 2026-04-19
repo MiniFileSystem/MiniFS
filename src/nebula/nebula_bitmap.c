@@ -3,7 +3,7 @@
  *                   zero the stream map region.
  *
  * Metadata pre-allocation (closes design-doc gap):
- *   LBAs [0 .. data_start_lba)        => allocated (1)
+ *   LBAs [0 .. data_start_lba)             => allocated (1)
  *   LBAs [data_start_lba .. alloc_roots_tail_lba) => free (0)
  *   LBAs [alloc_roots_tail_lba .. capacity) => allocated (1)
  *
@@ -14,12 +14,12 @@
 #include "../util/log.h"
 
 #include <errno.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
 static int write_zeros(struct nebula_io *io, nebula_lba_t lba, uint64_t n_blocks)
 {
-    /* Use a batch buffer for speed. */
     enum { BATCH_BLOCKS = 64 };  /* 256 KB */
     const size_t batch_bytes = BATCH_BLOCKS * NEBULA_BLOCK_SIZE;
     void *zbuf = aligned_alloc(NEBULA_BLOCK_SIZE, batch_bytes);

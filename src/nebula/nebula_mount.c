@@ -98,7 +98,7 @@ int nebula_mount_open(const char *path, struct nebula_mount **out)
 
     /* Step 5: Hierarchical bitmap */
     rc = nebula_hbm_load(m->io, m->sb.bitmap_lba, m->sb.bitmap_block_count,
-                         m->sb.data_block_count + m->sb.data_start_lba,
+                         m->sb.device_capacity_blocks,
                          &m->bitmap);
     if (rc != NEBULA_OK) {
         NEB_ERR("mount: bitmap load: %s", strerror(-rc));
