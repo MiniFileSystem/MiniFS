@@ -19,10 +19,15 @@ struct nebula_mount {
     struct nebula_hier_bitmap *bitmap;
 };
 
-/* Open and mount a device. Returns NEBULA_OK or -errno.
+/* Open and mount a device from a path. Returns NEBULA_OK or -errno.
  * On success, caller must free with nebula_mount_unmount().
  */
 int nebula_mount_open(const char *path, struct nebula_mount **out);
+
+/* Mount from a pre-created nebula_io handle (e.g. SPDK backend).
+ * The mount takes ownership of io and will close it on unmount.
+ */
+int nebula_mount_open_io(struct nebula_io *io, struct nebula_mount **out);
 
 void nebula_mount_unmount(struct nebula_mount *m);
 

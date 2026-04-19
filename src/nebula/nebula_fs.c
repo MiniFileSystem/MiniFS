@@ -22,6 +22,11 @@ int nebula_fs_mount(const char *path, nebula_fs_t **out)
     return nebula_mount_open(path, out);
 }
 
+int nebula_fs_mount_io(struct nebula_io *io, nebula_fs_t **out)
+{
+    return nebula_mount_open_io(io, out);
+}
+
 void nebula_fs_unmount(nebula_fs_t *fs)
 {
     nebula_mount_unmount(fs);

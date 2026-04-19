@@ -16,6 +16,7 @@
 #define NEBULA_FS_H
 
 #include "nebula_types.h"
+#include "nebula_io.h"
 #include <sys/types.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -48,6 +49,13 @@ struct nebula_fs_dirent {
  * Returns NEBULA_OK or -errno.
  */
 int nebula_fs_mount(const char *path, nebula_fs_t **out);
+
+/*
+ * Mount from a pre-created nebula_io handle (e.g. SPDK NVMe backend).
+ * The fs takes ownership of io; it will be closed by nebula_fs_unmount.
+ * Returns NEBULA_OK or -errno.
+ */
+int nebula_fs_mount_io(struct nebula_io *io, nebula_fs_t **out);
 
 /*
  * Flush pending state and release all resources.

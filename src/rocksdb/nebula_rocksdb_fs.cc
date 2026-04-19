@@ -182,9 +182,19 @@ NebulaFileSystem::NebulaFileSystem(const std::string &device_path)
 {
     int rc = nebula_fs_mount(device_path.c_str(), &fs_);
     if (rc != 0) {
-        /* Throw so the caller knows construction failed */
         throw std::runtime_error("NebulaFileSystem: mount failed on '" +
                                  device_path + "': " + std::strerror(-rc));
+    }
+}
+
+NebulaFileSystem::NebulaFileSystem(struct nebula_io *io)
+    : fs_(nullptr), device_path_("(spdk)")
+{
+    int rc = nebula_fs_mount_io(io, &fs_);
+    if (rc != 0) {
+        throw std::runtime_error(
+            std::string("NebulaFileSystem: mount_io failed: ") +
+            std::strerror(-rc));
     }
 }
 

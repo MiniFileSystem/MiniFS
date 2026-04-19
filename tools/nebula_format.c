@@ -12,6 +12,11 @@
 #include "nebula/nebula_io.h"
 #include "nebula/nebula_layout.h"
 
+#ifdef NEBULA_ENABLE_SPDK
+#include "../src/io/nebula_spdk_env.h"
+#include "../src/io/nebula_io_spdk.h"
+#endif
+
 #include "../src/util/uuid.h"
 #include "../src/util/log.h"
 
@@ -30,11 +35,14 @@
 static void usage(const char *prog)
 {
     fprintf(stderr,
-        "Usage: %s --path <file> [--size <bytes|NK|NM|NG>] [--inode-size 4096|8192]\n"
-        "           [--force] [--verbose]\n"
-        "  --path         Path to device or backing file (required)\n"
-        "  --size         Size if creating a new file (e.g. 1G, 512M, 1073741824)\n"
+        "Usage: %s --path <file|pci-bdf> [--size <bytes|NK|NM|NG>]\n"
+        "           [--inode-size 4096|8192] [--force] [--verbose]\n"
+        "           [--spdk]  (use SPDK NVMe backend; path = PCIe BDF)\n"
+        "  --path         Path to device/image OR PCIe BDF (e.g. 0000:00:02.0)\n"
+        "  --size         Size if creating a new image file (e.g. 1G, 512M)\n"
+        "                 Ignored for real NVMe devices (use 0 or omit)\n"
         "  --inode-size   Inode size in bytes: 4096 (default) or 8192\n"
+        "  --spdk         Use SPDK NVMe backend (requires hugepages + vfio-pci)\n"
         "  --force        Overwrite an existing Nebula image without asking\n"
         "  --verbose      Enable debug logging\n",
         prog);
@@ -64,7 +72,8 @@ int main(int argc, char **argv)
     const char *path = NULL;
     uint64_t    size = 0;
     uint32_t    inode_size = NEBULA_INODE_SIZE_DEFAULT;
-    bool        force = false;
+    bool        force    = false;
+    bool        use_spdk = false;
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--path") && i + 1 < argc)      path = argv[++i];
@@ -83,6 +92,7 @@ int main(int argc, char **argv)
             inode_size = (uint32_t)v;
         }
         else if (!strcmp(argv[i], "--force"))   force = true;
+        else if (!strcmp(argv[i], "--spdk"))    use_spdk = true;
         else if (!strcmp(argv[i], "--verbose")) nebula_log_set_level(NEBULA_LOG_DEBUG);
         else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
             usage(argv[0]); return 0;
@@ -93,11 +103,35 @@ int main(int argc, char **argv)
     if (!path) { usage(argv[0]); return 2; }
     (void)force; /* reserved */
 
-    struct nebula_io *io = NULL;
-    int rc = nebula_io_open(path, /*create=*/size > 0, size, &io);
-    if (rc != NEBULA_OK) {
-        fprintf(stderr, "Failed to open %s: %s\n", path, strerror(-rc));
+    if (use_spdk) {
+#ifndef NEBULA_ENABLE_SPDK
+        fprintf(stderr, "Error: --spdk requires building with -DNEBULA_ENABLE_SPDK=ON\n");
         return 1;
+#else
+        NEB_INFO("Initialising SPDK environment...");
+        if (nebula_spdk_env_init(NULL) != NEBULA_OK) {
+            fprintf(stderr, "SPDK env init failed\n"); return 1;
+        }
+#endif
+    }
+
+    struct nebula_io *io = NULL;
+    int rc;
+
+    if (use_spdk) {
+#ifdef NEBULA_ENABLE_SPDK
+        rc = nebula_io_spdk_open(path, &io);
+        if (rc != NEBULA_OK) {
+            fprintf(stderr, "SPDK open %s: %s\n", path, strerror(-rc));
+            nebula_spdk_env_fini(); return 1;
+        }
+#endif
+    } else {
+        rc = nebula_io_open(path, /*create=*/size > 0, size, &io);
+        if (rc != NEBULA_OK) {
+            fprintf(stderr, "Failed to open %s: %s\n", path, strerror(-rc));
+            return 1;
+        }
     }
 
     uint64_t capacity_blocks = nebula_io_capacity_blocks(io);
@@ -156,10 +190,16 @@ int main(int argc, char **argv)
 
     nebula_io_close(io);
     NEB_INFO("Done. Device formatted successfully.");
+#ifdef NEBULA_ENABLE_SPDK
+    if (use_spdk) nebula_spdk_env_fini();
+#endif
     return 0;
 
 fail:
     fprintf(stderr, "Format failed: %s\n", strerror(-rc));
     nebula_io_close(io);
+#ifdef NEBULA_ENABLE_SPDK
+    if (use_spdk) nebula_spdk_env_fini();
+#endif
     return 1;
 }

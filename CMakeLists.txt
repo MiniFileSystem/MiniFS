@@ -153,6 +153,18 @@ if(NEBULA_ENABLE_ROCKSDB)
         nebula_rocksdb nebula_core ${ROCKSDB_LIBRARIES} pthread)
     set_target_properties(nebula_rocksdb_test PROPERTIES CXX_STANDARD 17)
 
+    # If SPDK is also enabled, link it into the test and format tool
+    if(NEBULA_ENABLE_SPDK)
+        target_compile_definitions(nebula_rocksdb_test PRIVATE NEBULA_ENABLE_SPDK)
+        target_include_directories(nebula_rocksdb_test PRIVATE ${SPDK_INCLUDE_DIR})
+        target_link_libraries(nebula_rocksdb_test PRIVATE
+            nebula_spdk ${SPDK_LIBS} numa dl)
+        target_compile_definitions(nebula_format PRIVATE NEBULA_ENABLE_SPDK)
+        target_include_directories(nebula_format PRIVATE ${SPDK_INCLUDE_DIR})
+        target_link_libraries(nebula_format PRIVATE
+            nebula_spdk ${SPDK_LIBS} numa dl)
+    endif()
+
     message(STATUS "RocksDB adapter enabled")
 else()
     message(STATUS "RocksDB adapter disabled (pass -DNEBULA_ENABLE_ROCKSDB=ON to enable)")

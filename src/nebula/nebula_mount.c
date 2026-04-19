@@ -52,6 +52,56 @@ static int pick_latest_uberblock(struct nebula_io *io,
     return NEBULA_OK;
 }
 
+/* Shared mount logic — expects m->io already set. */
+static int nebula_mount_do(struct nebula_mount *m)
+{
+    int rc;
+
+    /* Step 2: MBR */
+    rc = nebula_mbr_read(m->io, &m->mbr);
+    if (rc != NEBULA_OK) {
+        NEB_ERR("mount: invalid MBR: %s", strerror(-rc));
+        return rc;
+    }
+
+    /* Step 3: Superblock (head, fallback to tail) */
+    rc = nebula_superblock_read(m->io, m->mbr.superblock_head_lba, &m->sb);
+    if (rc != NEBULA_OK) {
+        NEB_WARN("mount: head SB bad (%s); trying tail", strerror(-rc));
+        nebula_lba_t tail = nebula_io_capacity_blocks(m->io) - 1;
+        rc = nebula_superblock_read(m->io, tail, &m->sb);
+        if (rc != NEBULA_OK) {
+            NEB_ERR("mount: tail SB also bad: %s", strerror(-rc));
+            return rc;
+        }
+        NEB_WARN("mount: using tail SB (head is corrupt)");
+    }
+
+    /* Cross-check UUIDs */
+    if (memcmp(m->mbr.device_uuid, m->sb.device_uuid, 16) != 0) {
+        NEB_ERR("mount: MBR/SB UUID mismatch");
+        return -EIO;
+    }
+
+    /* Step 4: Uberblock */
+    rc = pick_latest_uberblock(m->io, &m->sb, &m->current_ub, &m->current_ub_slot);
+    if (rc != NEBULA_OK) {
+        NEB_ERR("mount: no valid uberblock");
+        return rc;
+    }
+
+    /* Step 5: Hierarchical bitmap */
+    rc = nebula_hbm_load(m->io, m->sb.bitmap_lba, m->sb.bitmap_block_count,
+                         m->sb.device_capacity_blocks,
+                         &m->bitmap);
+    if (rc != NEBULA_OK) {
+        NEB_ERR("mount: bitmap load: %s", strerror(-rc));
+        return rc;
+    }
+
+    return NEBULA_OK;
+}
+
 int nebula_mount_open(const char *path, struct nebula_mount **out)
 {
     if (!path || !out) return -EINVAL;
@@ -62,57 +112,32 @@ int nebula_mount_open(const char *path, struct nebula_mount **out)
     int rc = nebula_io_open(path, false, 0, &m->io);
     if (rc != NEBULA_OK) { free(m); return rc; }
 
-    /* Step 2: MBR */
-    rc = nebula_mbr_read(m->io, &m->mbr);
-    if (rc != NEBULA_OK) {
-        NEB_ERR("mount: invalid MBR: %s", strerror(-rc));
-        goto fail;
-    }
-
-    /* Step 3: Superblock (head, fallback to tail) */
-    rc = nebula_superblock_read(m->io, m->mbr.superblock_head_lba, &m->sb);
-    if (rc != NEBULA_OK) {
-        NEB_WARN("mount: head SB bad (%s); trying tail", strerror(-rc));
-        /* We don't know tail LBA without a good SB. Assume capacity-1. */
-        nebula_lba_t tail = nebula_io_capacity_blocks(m->io) - 1;
-        rc = nebula_superblock_read(m->io, tail, &m->sb);
-        if (rc != NEBULA_OK) {
-            NEB_ERR("mount: tail SB also bad: %s", strerror(-rc));
-            goto fail;
-        }
-        NEB_WARN("mount: using tail SB (head is corrupt)");
-    }
-
-    /* Cross-check UUIDs */
-    if (memcmp(m->mbr.device_uuid, m->sb.device_uuid, 16) != 0) {
-        NEB_ERR("mount: MBR/SB UUID mismatch");
-        rc = -EIO; goto fail;
-    }
-
-    /* Step 4: Uberblock */
-    rc = pick_latest_uberblock(m->io, &m->sb, &m->current_ub, &m->current_ub_slot);
-    if (rc != NEBULA_OK) {
-        NEB_ERR("mount: no valid uberblock");
-        goto fail;
-    }
-
-    /* Step 5: Hierarchical bitmap */
-    rc = nebula_hbm_load(m->io, m->sb.bitmap_lba, m->sb.bitmap_block_count,
-                         m->sb.device_capacity_blocks,
-                         &m->bitmap);
-    if (rc != NEBULA_OK) {
-        NEB_ERR("mount: bitmap load: %s", strerror(-rc));
-        goto fail;
-    }
-
-    /* Step 6: Stream replay - deferred to Milestone 3. */
+    rc = nebula_mount_do(m);
+    if (rc != NEBULA_OK) { nebula_mount_unmount(m); return rc; }
 
     *out = m;
     return NEBULA_OK;
+}
 
-fail:
-    nebula_mount_unmount(m);
-    return rc;
+int nebula_mount_open_io(struct nebula_io *io, struct nebula_mount **out)
+{
+    if (!io || !out) return -EINVAL;
+
+    struct nebula_mount *m = calloc(1, sizeof(*m));
+    if (!m) return -ENOMEM;
+
+    m->io = io;   /* take ownership */
+
+    int rc = nebula_mount_do(m);
+    if (rc != NEBULA_OK) {
+        /* Do not close io here — caller still owns it on failure */
+        m->io = NULL;
+        nebula_mount_unmount(m);
+        return rc;
+    }
+
+    *out = m;
+    return NEBULA_OK;
 }
 
 void nebula_mount_unmount(struct nebula_mount *m)

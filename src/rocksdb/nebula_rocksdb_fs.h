@@ -112,6 +112,13 @@ public:
      * The device must already have been formatted with nebula_format.
      */
     explicit NebulaFileSystem(const std::string &device_path);
+
+    /*
+     * Construct from a pre-opened nebula_io handle (e.g. SPDK NVMe backend).
+     * NebulaFileSystem takes ownership of io.
+     * The device must already have been formatted with nebula_format --spdk.
+     */
+    explicit NebulaFileSystem(struct nebula_io *io);
     ~NebulaFileSystem() override;
 
     static const char *kClassName() { return "NebulaFileSystem"; }
