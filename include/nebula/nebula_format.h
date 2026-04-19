@@ -203,6 +203,56 @@ _Static_assert(sizeof(struct nebula_dir_page_header) == NEBULA_BLOCK_SIZE,
 #define NEBULA_DIR_FLAG_FILE   0x02
 #define NEBULA_DIR_FLAG_DIR    0x04
 
+/* ==================================================================
+ * Stream Record - 1 byte allocation-log entry (see design doc §9)
+ *   op == NEBULA_STREAM_OP_FREE  (0) => block freed
+ *   op == NEBULA_STREAM_OP_ALLOC (1) => block allocated
+ *
+ * Records are appended sequentially into the Stream Map region.
+ * The LBA they apply to is derived from position (record N => block N
+ * within the allocator root currently being logged).  A stream page
+ * (4 KB) holds 4096 records.  The current write offset is tracked in
+ * the active uberblock (`stream_map_head_offset`).
+ * ================================================================== */
+#define NEBULA_STREAM_OP_FREE  0
+#define NEBULA_STREAM_OP_ALLOC 1
+
+struct __attribute__((packed)) nebula_stream_record {
+    uint8_t op;    /* NEBULA_STREAM_OP_{FREE,ALLOC} */
+};
+_Static_assert(sizeof(struct nebula_stream_record) == 1,
+               "stream record must be exactly 1 byte");
+
+#define NEBULA_STREAM_RECORDS_PER_PAGE (NEBULA_BLOCK_SIZE)  /* 4096 */
+
+/* ==================================================================
+ * Root-inode sub-allocator (design doc §11)
+ *
+ * The root inode extends its data region in 128 MiB chunks pulled from the
+ * global block allocator.  Within each chunk, directory inodes are handed
+ * out in 32 KiB units.  A 4 KiB bitmap lives at the top of every such
+ * chunk, tracking the 32768 contained 4 KiB sub-blocks (one bit each).
+ *
+ *    128 MiB / 4 KiB = 32768 sub-blocks
+ *    32768 bits      / 8    = 4096 bytes = 1 page
+ *
+ * An allocated 32 KiB directory slot consumes 8 consecutive bits.
+ * ================================================================== */
+#define NEBULA_ROOT_CHUNK_BYTES         NEBULA_CHUNK_SIZE        /* 128 MiB */
+#define NEBULA_ROOT_CHUNK_SUBBLOCK_SIZE NEBULA_BLOCK_SIZE        /* 4 KiB   */
+#define NEBULA_ROOT_CHUNK_SUBBLOCKS     NEBULA_CHUNK_BLOCKS      /* 32768   */
+#define NEBULA_ROOT_DIR_SLOT_BYTES      (32U * 1024U)            /* 32 KiB  */
+#define NEBULA_ROOT_DIR_SLOT_SUBBLOCKS  (NEBULA_ROOT_DIR_SLOT_BYTES / \
+                                         NEBULA_ROOT_CHUNK_SUBBLOCK_SIZE) /* 8 */
+#define NEBULA_ROOT_DIR_SLOTS_PER_CHUNK \
+        (NEBULA_ROOT_CHUNK_BYTES / NEBULA_ROOT_DIR_SLOT_BYTES)   /* 4096 */
+
+struct __attribute__((packed)) nebula_root_chunk_bitmap {
+    uint8_t bits[NEBULA_BLOCK_SIZE];  /* 32768 bits, 1 per 4 KiB sub-block */
+};
+_Static_assert(sizeof(struct nebula_root_chunk_bitmap) == NEBULA_BLOCK_SIZE,
+               "root-chunk bitmap must be 4 KiB");
+
 struct __attribute__((packed)) nebula_dir_entry {
     uint64_t hash;
     uint64_t inode_num;

@@ -38,6 +38,7 @@ set(NEBULA_CORE_SOURCES
     src/nebula/nebula_inode_init.c
     src/nebula/nebula_hier_bitmap.c
     src/nebula/nebula_mount.c
+    src/nebula/nebula_root_sub_alloc.c
 )
 
 add_library(nebula_core STATIC ${NEBULA_CORE_SOURCES})

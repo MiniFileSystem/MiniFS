@@ -29,7 +29,8 @@ int nebula_superblock_write_both(struct nebula_io *io,
     sb->magic                    = NEBULA_MAGIC_SB;
     sb->version_major            = NEBULA_VERSION_MAJOR;
     sb->version_minor            = NEBULA_VERSION_MINOR;
-    sb->inode_size               = NEBULA_INODE_SIZE;
+    sb->inode_size               = L->inode_size ? L->inode_size
+                                                 : NEBULA_INODE_SIZE;
     memcpy(sb->device_uuid, device_uuid, 16);
     sb->device_capacity_blocks   = L->capacity_blocks;
 

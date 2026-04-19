@@ -30,11 +30,13 @@
 static void usage(const char *prog)
 {
     fprintf(stderr,
-        "Usage: %s --path <file> [--size <bytes|NK|NM|NG>] [--force] [--verbose]\n"
-        "  --path      Path to device or backing file (required)\n"
-        "  --size      Size if creating a new file (e.g. 1G, 512M, 1073741824)\n"
-        "  --force     Overwrite an existing Nebula image without asking\n"
-        "  --verbose   Enable debug logging\n",
+        "Usage: %s --path <file> [--size <bytes|NK|NM|NG>] [--inode-size 4096|8192]\n"
+        "           [--force] [--verbose]\n"
+        "  --path         Path to device or backing file (required)\n"
+        "  --size         Size if creating a new file (e.g. 1G, 512M, 1073741824)\n"
+        "  --inode-size   Inode size in bytes: 4096 (default) or 8192\n"
+        "  --force        Overwrite an existing Nebula image without asking\n"
+        "  --verbose      Enable debug logging\n",
         prog);
 }
 
@@ -61,6 +63,7 @@ int main(int argc, char **argv)
 {
     const char *path = NULL;
     uint64_t    size = 0;
+    uint32_t    inode_size = NEBULA_INODE_SIZE_DEFAULT;
     bool        force = false;
 
     for (int i = 1; i < argc; i++) {
@@ -69,6 +72,15 @@ int main(int argc, char **argv)
             if (parse_size(argv[++i], &size) < 0) {
                 fprintf(stderr, "invalid --size\n"); return 2;
             }
+        }
+        else if (!strcmp(argv[i], "--inode-size") && i + 1 < argc) {
+            unsigned long v = strtoul(argv[++i], NULL, 10);
+            if (v != NEBULA_INODE_SIZE_DEFAULT && v != NEBULA_INODE_SIZE_LARGE) {
+                fprintf(stderr,
+                    "invalid --inode-size %lu (must be 4096 or 8192)\n", v);
+                return 2;
+            }
+            inode_size = (uint32_t)v;
         }
         else if (!strcmp(argv[i], "--force"))   force = true;
         else if (!strcmp(argv[i], "--verbose")) nebula_log_set_level(NEBULA_LOG_DEBUG);
@@ -95,7 +107,7 @@ int main(int argc, char **argv)
              (double)capacity_blocks * NEBULA_BLOCK_SIZE / (1024.0 * 1024.0));
 
     struct nebula_layout L;
-    rc = nebula_layout_compute(capacity_blocks, &L);
+    rc = nebula_layout_compute_ex(capacity_blocks, inode_size, &L);
     if (rc != NEBULA_OK) {
         fprintf(stderr, "Layout compute failed: device too small (min %lu MiB)\n",
                 (unsigned long)(NEBULA_MIN_DEVICE_BYTES / (1024 * 1024)));

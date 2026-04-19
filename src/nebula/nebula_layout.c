@@ -31,15 +31,21 @@ static inline uint64_t clamp_u64(uint64_t v, uint64_t lo, uint64_t hi)
     return v;
 }
 
-int nebula_layout_compute(uint64_t capacity_blocks, struct nebula_layout *out)
+int nebula_layout_compute_ex(uint64_t capacity_blocks, uint32_t inode_size,
+                             struct nebula_layout *out)
 {
     if (!out) return -EINVAL;
     if (capacity_blocks < NEBULA_MIN_DEVICE_BYTES / NEBULA_BLOCK_SIZE) {
         return -EINVAL;
     }
+    if (inode_size != NEBULA_INODE_SIZE_DEFAULT &&
+        inode_size != NEBULA_INODE_SIZE_LARGE) {
+        return -EINVAL;
+    }
 
     struct nebula_layout L;
     L.capacity_blocks = capacity_blocks;
+    L.inode_size      = inode_size;
 
     /* Fixed head metadata */
     L.mbr_lba             = NEBULA_LBA_MBR;             /* 0 */
@@ -90,12 +96,19 @@ int nebula_layout_compute(uint64_t capacity_blocks, struct nebula_layout *out)
     return NEBULA_OK;
 }
 
+int nebula_layout_compute(uint64_t capacity_blocks, struct nebula_layout *out)
+{
+    return nebula_layout_compute_ex(capacity_blocks,
+                                    NEBULA_INODE_SIZE_DEFAULT, out);
+}
+
 void nebula_layout_print(const struct nebula_layout *L)
 {
     if (!L) return;
-    printf("Layout (capacity=%lu blocks, %.2f MiB):\n",
+    printf("Layout (capacity=%lu blocks, %.2f MiB, inode_size=%u):\n",
            (unsigned long)L->capacity_blocks,
-           (double)L->capacity_blocks * NEBULA_BLOCK_SIZE / (1024.0 * 1024.0));
+           (double)L->capacity_blocks * NEBULA_BLOCK_SIZE / (1024.0 * 1024.0),
+           L->inode_size);
     printf("  %-22s %10lu\n", "MBR lba",                (unsigned long)L->mbr_lba);
     printf("  %-22s %10lu\n", "SB head lba",            (unsigned long)L->sb_head_lba);
     printf("  %-22s %10lu (x%lu slots)\n", "Uberblock lba",

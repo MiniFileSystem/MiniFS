@@ -6,8 +6,13 @@
 
 #include "nebula_types.h"
 
+/* Valid values for layout.inode_size: 4096 (default) or 8192. */
+#define NEBULA_INODE_SIZE_DEFAULT 4096U
+#define NEBULA_INODE_SIZE_LARGE   8192U
+
 struct nebula_layout {
     uint64_t     capacity_blocks;
+    uint32_t     inode_size;              /* 4096 or 8192 */
 
     nebula_lba_t mbr_lba;                 /* 0 */
     nebula_lba_t sb_head_lba;             /* 1 */
@@ -38,8 +43,16 @@ struct nebula_layout {
 
 /* Compute layout from device capacity.
  * Returns NEBULA_OK or -EINVAL if device is too small.
+ * Uses the default inode size (4096).
  */
 int nebula_layout_compute(uint64_t capacity_blocks, struct nebula_layout *out);
+
+/* Same as nebula_layout_compute but with a configurable inode size.
+ * Valid inode_size values: NEBULA_INODE_SIZE_DEFAULT (4096) or
+ * NEBULA_INODE_SIZE_LARGE (8192). Any other value returns -EINVAL.
+ */
+int nebula_layout_compute_ex(uint64_t capacity_blocks, uint32_t inode_size,
+                             struct nebula_layout *out);
 
 /* For debug printing */
 void nebula_layout_print(const struct nebula_layout *layout);
