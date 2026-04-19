@@ -153,6 +153,14 @@ if(NEBULA_ENABLE_ROCKSDB)
         nebula_rocksdb nebula_core ${ROCKSDB_LIBRARIES} pthread)
     set_target_properties(nebula_rocksdb_test PROPERTIES CXX_STANDARD 17)
 
+    # db_bench integration
+    add_executable(nebula_db_bench tools/nebula_db_bench.cc)
+    target_include_directories(nebula_db_bench PRIVATE
+        include src ${ROCKSDB_INCLUDE_DIRS})
+    target_link_libraries(nebula_db_bench PRIVATE
+        nebula_rocksdb nebula_core ${ROCKSDB_LIBRARIES} pthread)
+    set_target_properties(nebula_db_bench PROPERTIES CXX_STANDARD 17)
+
     # If SPDK is also enabled, link it into the test and format tool
     if(NEBULA_ENABLE_SPDK)
         target_compile_definitions(nebula_rocksdb_test PRIVATE NEBULA_ENABLE_SPDK)
