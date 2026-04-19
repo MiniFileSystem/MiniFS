@@ -40,6 +40,10 @@ set(NEBULA_CORE_SOURCES
     src/nebula/nebula_mount.c
     src/nebula/nebula_root_sub_alloc.c
     src/nebula/nebula_block_alloc.c
+    src/nebula/nebula_inode_alloc.c
+    src/nebula/nebula_file.c
+    src/nebula/nebula_dir.c
+    src/nebula/nebula_fs.c
 )
 
 add_library(nebula_core STATIC ${NEBULA_CORE_SOURCES})
@@ -52,9 +56,12 @@ add_executable(nebula_fsck     tools/nebula_fsck.c)
 add_executable(nebula_discover tools/nebula_discover.c)
 add_executable(nebula_mount    tools/nebula_mount.c)
 add_executable(nebula_alloc    tools/nebula_alloc.c)
+add_executable(nebula_inode    tools/nebula_inode.c)
+add_executable(nebula_rw       tools/nebula_rw.c)
 
 foreach(tool nebula_format nebula_dump nebula_label
-              nebula_fsck nebula_discover nebula_mount nebula_alloc)
+              nebula_fsck nebula_discover nebula_mount nebula_alloc
+              nebula_inode nebula_rw)
     target_link_libraries(${tool} PRIVATE nebula_core)
 endforeach()
 
