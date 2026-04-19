@@ -1,0 +1,22 @@
+build/
+*.img
+*.bin
+~$*
+*.swp
+.DS_Store
+
+# Design documents (kept locally, not in repo)
+01_Architectural_Assessment.md
+02_High_Level_Design.md
+03_Low_Level_Design.md
+ChunkMapAllocatorDesign.docx
+*.jpeg
+*.jpg
+*.png
+*.o
+*.a
+compile_commands.json
+.vscode/
+.cache/
+.idea/
+*.swp
