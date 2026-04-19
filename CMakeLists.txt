@@ -36,15 +36,23 @@ set(NEBULA_CORE_SOURCES
     src/nebula/nebula_allocator_roots.c
     src/nebula/nebula_bitmap.c
     src/nebula/nebula_inode_init.c
+    src/nebula/nebula_hier_bitmap.c
+    src/nebula/nebula_mount.c
 )
 
 add_library(nebula_core STATIC ${NEBULA_CORE_SOURCES})
 target_include_directories(nebula_core PUBLIC include)
 
-add_executable(nebula_format tools/nebula_format.c)
-target_link_libraries(nebula_format PRIVATE nebula_core)
+add_executable(nebula_format   tools/nebula_format.c)
+add_executable(nebula_dump     tools/nebula_dump.c)
+add_executable(nebula_label    tools/nebula_label.c)
+add_executable(nebula_fsck     tools/nebula_fsck.c)
+add_executable(nebula_discover tools/nebula_discover.c)
+add_executable(nebula_mount    tools/nebula_mount.c)
 
-add_executable(nebula_dump tools/nebula_dump.c)
-target_link_libraries(nebula_dump PRIVATE nebula_core)
+foreach(tool nebula_format nebula_dump nebula_label
+              nebula_fsck nebula_discover nebula_mount)
+    target_link_libraries(${tool} PRIVATE nebula_core)
+endforeach()
 
 message(STATUS "Nebula FS configured: ${CMAKE_BUILD_TYPE}")
