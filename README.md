@@ -327,23 +327,36 @@ Inode size is configurable at format time via `--inode-size 4096|8192`
   `etcdctl put /nebula/devices/<domain>/<uuid>` for each device
   (use `--dry-run` to just print the commands).
 
-### Design-doc scaffolding landed in M1+M2 (wired in M3+)
+### Milestone 3 — MiniFS API
 
-- `struct nebula_stream_record` (1 byte, FREE=0 / ALLOC=1) per design §9.
-- `struct nebula_root_chunk_bitmap` + `nebula_root_sub_alloc.{c,h}` —
-  4 KiB page tracking the 32768 sub-blocks inside each 128 MiB root-inode
-  chunk; pure-memory API (init / alloc / free / free_slots) ready for the
-  M3+ `mkdir` flow that hands out 32 KiB directory slots.
+- **File operations**: Complete CRUD interface with `nebula_fs_create()`, `nebula_fs_open()`, `nebula_fs_write()`, `nebula_fs_read()`, `nebula_fs_delete()`, and `nebula_fs_close()`
+- **Directory operations**: Flat namespace with `nebula_fs_lookup()`, `nebula_fs_readdir()`, and `nebula_fs_statvfs()`
+- **Block allocation**: Dynamic extent allocation with automatic file expansion
+- **Inode management**: Inode allocation, initialization, and metadata tracking
+- **POSIX file backend**: Default I/O backend using pread/pwrite for file-backed devices
+
+### Milestone 4 — SPDK IO Backend
+
+- **NVMe support**: Direct NVMe device access via SPDK for high-performance I/O
+- **PCIe and TCP**: Support for both local PCIe BDF and remote NVMe/TCP connections
+- **Drop-in replacement**: `nebula_io_spdk_open()` provides same interface as `nebula_io_open()`
+- **Environment management**: SPDK environment initialization and cleanup via `nebula_spdk_env_init()` and `nebula_spdk_env_fini()`
+
+### Milestone 5 — RocksDB Integration
+
+- **FileSystem adapter**: Full RocksDB 8.x FileSystem plugin implementation
+- **File abstractions**: SequentialFile, RandomAccessFile, and WritableFile wrappers
+- **Thread safety**: Mutex-serialized operations for concurrent access
+- **Flat namespace mapping**: RocksDB paths mapped to Nebula's flat directory structure
+- **SPDK compatibility**: Adapter works with both POSIX and SPDK backends
 
 ## Known Limitations
 
-- Stream map replay is a no-op in M2 (the region is empty after `mkfs`).
-  The record format is defined, but the replay loop and crash-recovery
-  logic arrive with M3.
-- The root-inode 32 KiB sub-allocator exists as an API only — no `mkdir`
-  yet wires it into the inode extent map; that lands with M3.
-- No FUSE mount yet. `nebula_mount` only validates that the device *can*
-  be mounted and prints the resolved state.
+- **Stream map replay**: The replay loop and crash-recovery logic are not yet implemented (planned for M6+)
+- **No FUSE mount**: `nebula_mount` only validates device mountability and prints state; no filesystem mounting yet
+- **Flat namespace**: Nebula uses a flat directory structure; hierarchical subdirectories are not supported
+- **Thread-safety**: The core MiniFS API is not thread-safe; external serialization is required for concurrent access
+- **Single-process**: Locking operations are no-ops; multi-process support is not implemented
 
 ## License
 
