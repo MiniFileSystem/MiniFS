@@ -10,6 +10,13 @@
 
 #include "nebula_types.h"
 
+/* _Static_assert is C11; static_assert is C++11.  Bridge the two. */
+#ifdef __cplusplus
+#  define NEBULA_STATIC_ASSERT(expr, msg) static_assert(expr, msg)
+#else
+#  define NEBULA_STATIC_ASSERT(expr, msg) _Static_assert(expr, msg)
+#endif
+
 /* ---------- Magic numbers ---------- */
 #define NEBULA_MAGIC_MBR_STR     "NEBULA\0"                 /* 8 bytes incl NUL */
 #define NEBULA_MAGIC_SB          0x4E45425553420001ULL      /* NEBUSB + v1 */
@@ -40,7 +47,7 @@ struct __attribute__((packed)) nebula_mbr {
     uint32_t checksum;                /* CRC32C, this field=0 when computing */
     uint8_t  reserved[NEBULA_BLOCK_SIZE - 52];
 };
-_Static_assert(sizeof(struct nebula_mbr) == NEBULA_BLOCK_SIZE, "MBR must be 4KB");
+NEBULA_STATIC_ASSERT(sizeof(struct nebula_mbr) == NEBULA_BLOCK_SIZE, "MBR must be 4KB");
 
 /* ==================================================================
  * Superblock - 4 KB, head at LBA 1, tail at end of device
@@ -82,7 +89,7 @@ struct __attribute__((packed)) nebula_superblock {
     uint32_t _pad1;
     uint8_t  reserved[NEBULA_BLOCK_SIZE - 168];
 };
-_Static_assert(sizeof(struct nebula_superblock) == NEBULA_BLOCK_SIZE, "SB must be 4KB");
+NEBULA_STATIC_ASSERT(sizeof(struct nebula_superblock) == NEBULA_BLOCK_SIZE, "SB must be 4KB");
 
 /* ==================================================================
  * Uberblock - 4 KB per slot, 128 slots
@@ -98,7 +105,7 @@ struct __attribute__((packed)) nebula_uberblock {
     uint32_t checksum;
     uint8_t  reserved[NEBULA_BLOCK_SIZE - 56];
 };
-_Static_assert(sizeof(struct nebula_uberblock) == NEBULA_BLOCK_SIZE, "UB must be 4KB");
+NEBULA_STATIC_ASSERT(sizeof(struct nebula_uberblock) == NEBULA_BLOCK_SIZE, "UB must be 4KB");
 
 /* ==================================================================
  * Allocator root - 64 bytes, 64 per 4 KB block
@@ -115,10 +122,10 @@ struct __attribute__((packed)) nebula_allocator_root {
     uint32_t checksum;
     uint8_t  reserved[64 - 60];
 };
-_Static_assert(sizeof(struct nebula_allocator_root) == 64, "AR must be 64B");
+NEBULA_STATIC_ASSERT(sizeof(struct nebula_allocator_root) == 64, "AR must be 64B");
 
 #define NEBULA_ALLOC_ROOTS_PER_BLOCK (NEBULA_BLOCK_SIZE / sizeof(struct nebula_allocator_root))
-_Static_assert(NEBULA_ALLOC_ROOTS_PER_BLOCK == NEBULA_ALLOC_ROOTS_HEAD,
+NEBULA_STATIC_ASSERT(NEBULA_ALLOC_ROOTS_PER_BLOCK == NEBULA_ALLOC_ROOTS_HEAD,
                "64 roots must fit in 1 block");
 
 /* ==================================================================
@@ -129,7 +136,7 @@ _Static_assert(NEBULA_ALLOC_ROOTS_PER_BLOCK == NEBULA_ALLOC_ROOTS_HEAD,
 struct __attribute__((packed)) nebula_bitmap_page {
     uint8_t bits[NEBULA_BLOCK_SIZE];
 };
-_Static_assert(sizeof(struct nebula_bitmap_page) == NEBULA_BLOCK_SIZE, "BM page 4KB");
+NEBULA_STATIC_ASSERT(sizeof(struct nebula_bitmap_page) == NEBULA_BLOCK_SIZE, "BM page 4KB");
 
 /* ==================================================================
  * Inode - 4 KB.  First 128 B = attributes, rest = extent map.
@@ -152,7 +159,7 @@ struct __attribute__((packed)) nebula_extent_map_entry {
     uint32_t em_size_and_flags;  /* 24b size | 8b flags */
     uint32_t em_lba;             /* physical LBA (4 KB or 128 MiB based on flags) */
 };
-_Static_assert(sizeof(struct nebula_extent_map_entry) == NEBULA_EXTENT_ENTRY_SIZE,
+NEBULA_STATIC_ASSERT(sizeof(struct nebula_extent_map_entry) == NEBULA_EXTENT_ENTRY_SIZE,
                "extent entry must be 16 B");
 
 #define NEBULA_EM_FLAG_LBA_128MIB  0x01
@@ -177,7 +184,7 @@ struct __attribute__((packed)) nebula_inode {
     /* --- Extent map (3968 bytes = 248 entries) --- */
     struct nebula_extent_map_entry extents[NEBULA_EXTENTS_PER_INODE];
 };
-_Static_assert(sizeof(struct nebula_inode) == NEBULA_BLOCK_SIZE, "Inode must be 4KB");
+NEBULA_STATIC_ASSERT(sizeof(struct nebula_inode) == NEBULA_BLOCK_SIZE, "Inode must be 4KB");
 
 /* ==================================================================
  * Directory page header - first block of directory region
@@ -191,7 +198,7 @@ struct __attribute__((packed)) nebula_dir_page_header {
     uint32_t checksum;
     uint8_t  reserved[NEBULA_BLOCK_SIZE - 36];
 };
-_Static_assert(sizeof(struct nebula_dir_page_header) == NEBULA_BLOCK_SIZE,
+NEBULA_STATIC_ASSERT(sizeof(struct nebula_dir_page_header) == NEBULA_BLOCK_SIZE,
                "dir page header 4KB");
 
 /* Directory entry - 1024 B; 4 per 4 KB block */
@@ -220,7 +227,7 @@ _Static_assert(sizeof(struct nebula_dir_page_header) == NEBULA_BLOCK_SIZE,
 struct __attribute__((packed)) nebula_stream_record {
     uint8_t op;    /* NEBULA_STREAM_OP_{FREE,ALLOC} */
 };
-_Static_assert(sizeof(struct nebula_stream_record) == 1,
+NEBULA_STATIC_ASSERT(sizeof(struct nebula_stream_record) == 1,
                "stream record must be exactly 1 byte");
 
 #define NEBULA_STREAM_RECORDS_PER_PAGE (NEBULA_BLOCK_SIZE)  /* 4096 */
@@ -250,7 +257,7 @@ _Static_assert(sizeof(struct nebula_stream_record) == 1,
 struct __attribute__((packed)) nebula_root_chunk_bitmap {
     uint8_t bits[NEBULA_BLOCK_SIZE];  /* 32768 bits, 1 per 4 KiB sub-block */
 };
-_Static_assert(sizeof(struct nebula_root_chunk_bitmap) == NEBULA_BLOCK_SIZE,
+NEBULA_STATIC_ASSERT(sizeof(struct nebula_root_chunk_bitmap) == NEBULA_BLOCK_SIZE,
                "root-chunk bitmap must be 4 KiB");
 
 struct __attribute__((packed)) nebula_dir_entry {
@@ -261,7 +268,7 @@ struct __attribute__((packed)) nebula_dir_entry {
     uint32_t _pad0;
     char     name[NEBULA_DIR_NAME_MAX];
 };
-_Static_assert(sizeof(struct nebula_dir_entry) == NEBULA_DIR_ENTRY_SIZE,
+NEBULA_STATIC_ASSERT(sizeof(struct nebula_dir_entry) == NEBULA_DIR_ENTRY_SIZE,
                "dir entry must be 1024 B");
 
 #endif /* NEBULA_FORMAT_H */

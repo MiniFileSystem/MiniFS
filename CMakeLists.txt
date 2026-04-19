@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
-project(nebula_fs C)
+project(nebula_fs C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -10,10 +12,12 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 add_compile_options(
-    -Wall -Wextra -Wpedantic
+    -Wall -Wextra
     -Wshadow -Wpointer-arith -Wcast-align
-    -Wstrict-prototypes -Wmissing-prototypes
-    -D_GNU_SOURCE
+    $<$<COMPILE_LANGUAGE:C>:-Wpedantic>
+    $<$<COMPILE_LANGUAGE:C>:-Wstrict-prototypes>
+    $<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>
+    $<$<COMPILE_LANGUAGE:C>:-D_GNU_SOURCE>
 )
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -108,6 +112,50 @@ if(NEBULA_ENABLE_SPDK)
     message(STATUS "SPDK backend enabled  (SPDK_DIR=${SPDK_DIR})")
 else()
     message(STATUS "SPDK backend disabled (pass -DNEBULA_ENABLE_SPDK=ON to enable)")
+endif()
+
+# ===========================================================================
+# Optional RocksDB FileSystem adapter (C2-C7)
+# Enable with:  cmake -DNEBULA_ENABLE_ROCKSDB=ON
+# Requires:     librocksdb-dev >= 7.0  (apt-get install -y librocksdb-dev)
+# ===========================================================================
+option(NEBULA_ENABLE_ROCKSDB "Build the RocksDB FileSystem adapter" OFF)
+
+if(NEBULA_ENABLE_ROCKSDB)
+    find_package(PkgConfig QUIET)
+
+    # Try pkg-config first, fall back to plain -lrocksdb
+    if(PkgConfig_FOUND)
+        pkg_check_modules(ROCKSDB rocksdb)
+    endif()
+
+    if(NOT ROCKSDB_FOUND)
+        # Manual fallback
+        set(ROCKSDB_LIBRARIES rocksdb)
+        set(ROCKSDB_INCLUDE_DIRS /usr/include)
+    endif()
+
+    add_library(nebula_rocksdb STATIC
+        src/rocksdb/nebula_rocksdb_fs.cc)
+    target_include_directories(nebula_rocksdb PUBLIC
+        include
+        src
+        ${ROCKSDB_INCLUDE_DIRS})
+    target_link_libraries(nebula_rocksdb PUBLIC
+        nebula_core ${ROCKSDB_LIBRARIES})
+    set_target_properties(nebula_rocksdb PROPERTIES CXX_STANDARD 17)
+
+    # C7: Smoke test tool
+    add_executable(nebula_rocksdb_test tools/nebula_rocksdb_test.cc)
+    target_include_directories(nebula_rocksdb_test PRIVATE
+        include src ${ROCKSDB_INCLUDE_DIRS})
+    target_link_libraries(nebula_rocksdb_test PRIVATE
+        nebula_rocksdb nebula_core ${ROCKSDB_LIBRARIES} pthread)
+    set_target_properties(nebula_rocksdb_test PROPERTIES CXX_STANDARD 17)
+
+    message(STATUS "RocksDB adapter enabled")
+else()
+    message(STATUS "RocksDB adapter disabled (pass -DNEBULA_ENABLE_ROCKSDB=ON to enable)")
 endif()
 
 message(STATUS "Nebula FS configured: ${CMAKE_BUILD_TYPE}")
