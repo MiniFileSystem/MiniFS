@@ -23,6 +23,7 @@ All tools are built into the `build/` directory.
 | `nebula_fsck`     | Six-stage checksum and cross-reference validator |
 | `nebula_discover` | Scan paths / directories; emit text or JSON with ETCD-ready keys (Task B) |
 | `nebula_mount`    | Open a device, pick the latest uberblock, build the hierarchical bitmap, print the resolved mount state |
+| `tools/nebula_etcd_push.sh` | Pipes `nebula_discover` JSON into `etcdctl put /nebula/devices/<domain>/<uuid>` (supports `--dry-run`; requires `jq`) |
 
 ## Build
 
@@ -121,6 +122,14 @@ MBR, dual superblocks (head + tail), 128-slot uberblock region,
 stream map region, inode page with root inode (`/`, inode 0, type DIR),
 directory page with the `"/"` entry.
 
+`mkfs` pre-marks every metadata LBA (MBR, SBs, uberblocks, allocator roots,
+bitmap, stream map, inode page, directory page) as allocated in the bitmap
+so only data-region blocks appear free on mount (~196 209 free blocks on a
+1 GiB image).
+
+Inode size is configurable at format time via `--inode-size 4096|8192`
+(default 4096) and recorded in the superblock.
+
 ### Milestone 2 — Mount + Tools
 
 - **Hierarchical bitmap** (L0 raw bits, L1 group summaries, L2 total free)
@@ -130,18 +139,32 @@ directory page with the `"/"` entry.
   (stream replay deferred to M3).
 - **`nebula_fsck`** performs six independent validations with structured
   pass / warn / fail reporting and exit codes (`0` clean, `1` warn, `2` fail).
+- **`nebula_label write`** updates the MBR **and** rewrites head+tail
+  superblocks with the new UUID so `nebula_mount` / `nebula_fsck`
+  cross-checks stay consistent.
 - **`nebula_discover`** walks files or directories, recognises Nebula
   devices by their MBR, and emits text or JSON tagged with failure
-  domain and hostname; JSON includes an `etcd_key` field ready for M6.
+  domain and hostname; JSON includes an `etcd_key` field.
+- **`nebula_etcd_push.sh`** completes the ETCD publish path end-to-end:
+  it consumes the discover JSON with `jq` and calls
+  `etcdctl put /nebula/devices/<domain>/<uuid>` for each device
+  (use `--dry-run` to just print the commands).
+
+### Design-doc scaffolding landed in M1+M2 (wired in M3+)
+
+- `struct nebula_stream_record` (1 byte, FREE=0 / ALLOC=1) per design §9.
+- `struct nebula_root_chunk_bitmap` + `nebula_root_sub_alloc.{c,h}` —
+  4 KiB page tracking the 32768 sub-blocks inside each 128 MiB root-inode
+  chunk; pure-memory API (init / alloc / free / free_slots) ready for the
+  M3+ `mkdir` flow that hands out 32 KiB directory slots.
 
 ## Known Limitations
 
-- The on-disk bitmap is zero-initialised by `mkfs`, so `nebula_mount`
-  currently reports *every* block as free — including metadata regions.
-  This is safe because there is no allocator yet. M3 will pre-mark
-  metadata blocks as allocated in `mkfs`.
 - Stream map replay is a no-op in M2 (the region is empty after `mkfs`).
-  Crash-recovery logic arrives with M3.
+  The record format is defined, but the replay loop and crash-recovery
+  logic arrive with M3.
+- The root-inode 32 KiB sub-allocator exists as an API only — no `mkdir`
+  yet wires it into the inode extent map; that lands with M3.
 - No FUSE mount yet. `nebula_mount` only validates that the device *can*
   be mounted and prints the resolved state.
 
