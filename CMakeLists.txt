@@ -65,4 +65,49 @@ foreach(tool nebula_format nebula_dump nebula_label
     target_link_libraries(${tool} PRIVATE nebula_core)
 endforeach()
 
+# ===========================================================================
+# Optional SPDK backend (B2-B6)
+# Enable with:  cmake -DNEBULA_ENABLE_SPDK=ON -DSPDK_DIR=/path/to/spdk ...
+# ===========================================================================
+option(NEBULA_ENABLE_SPDK "Build the SPDK NVMe I/O backend" OFF)
+
+if(NEBULA_ENABLE_SPDK)
+    if(NOT DEFINED SPDK_DIR)
+        message(FATAL_ERROR "NEBULA_ENABLE_SPDK requires -DSPDK_DIR=<path to SPDK build>")
+    endif()
+
+    set(SPDK_INCLUDE_DIR "${SPDK_DIR}/include")
+    set(SPDK_LIB_DIR     "${SPDK_DIR}/build/lib")
+
+    set(NEBULA_SPDK_SOURCES
+        src/io/nebula_spdk_env.c
+        src/io/nebula_spdk_nvme.c
+        src/io/nebula_io_spdk.c
+        src/io/nebula_dma_pool.c
+    )
+
+    add_library(nebula_spdk STATIC ${NEBULA_SPDK_SOURCES})
+    target_include_directories(nebula_spdk PUBLIC include ${SPDK_INCLUDE_DIR})
+    target_compile_definitions(nebula_spdk PUBLIC NEBULA_SPDK_ENABLED)
+
+    # SPDK libraries required for NVMe + environment
+    set(SPDK_LIBS
+        "${SPDK_LIB_DIR}/libspdk_nvme.a"
+        "${SPDK_LIB_DIR}/libspdk_env_dpdk.a"
+        "${SPDK_LIB_DIR}/libspdk_log.a"
+        "${SPDK_LIB_DIR}/libspdk_util.a"
+        "${SPDK_LIB_DIR}/libspdk_sock.a"
+    )
+
+    # Probe CLI tool (B6)
+    add_executable(nebula_spdk_probe tools/nebula_spdk_probe.c)
+    target_include_directories(nebula_spdk_probe PRIVATE include ${SPDK_INCLUDE_DIR})
+    target_link_libraries(nebula_spdk_probe PRIVATE
+        nebula_core nebula_spdk ${SPDK_LIBS} pthread dl numa)
+
+    message(STATUS "SPDK backend enabled  (SPDK_DIR=${SPDK_DIR})")
+else()
+    message(STATUS "SPDK backend disabled (pass -DNEBULA_ENABLE_SPDK=ON to enable)")
+endif()
+
 message(STATUS "Nebula FS configured: ${CMAKE_BUILD_TYPE}")
