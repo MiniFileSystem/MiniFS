@@ -20,16 +20,32 @@
 
 /*
  * Open an NVMe device as a nebula_io backend.
- * traddr: PCIe BDF string e.g. "0000:01:00.0", or NULL to use the first
- *         available NVMe namespace.
- * out:    receives the nebula_io handle on success.
+ *
+ * traddr can be ONE of:
+ *   PCIe BDF  "0000:01:00.0"
+ *             NULL = first available local NVMe
+ *   TCP       "tcp:<ip>:<port>:<nqn>"
+ *             e.g. "tcp:172.31.1.2:4420:nqn.2024-01.com.minifs:nvme0"
+ *
+ * out: receives the nebula_io handle on success.
  * Returns NEBULA_OK or -errno equivalent.
  *
  * Prerequisites:
  *   - nebula_spdk_env_init() must have been called.
- *   - The target NVMe device must be unbound from the kernel driver
- *     and bound to vfio-pci or uio_pci_generic.
+ *   - PCIe: device unbound from kernel + bound to vfio-pci or uio_pci_generic.
+ *   - TCP:  hugepages set up; no vfio needed; target reachable on given port.
  */
 int nebula_io_spdk_open(const char *traddr, struct nebula_io **out);
+
+/*
+ * Convenience wrapper: open an NVMe/TCP device explicitly.
+ * ip:    target IPv4 address string e.g. "172.31.1.2"
+ * port:  target port string e.g. "4420"
+ * nqn:   subsystem NQN e.g. "nqn.2024-01.com.minifs:nvme0"
+ * out:   receives the nebula_io handle on success.
+ * Returns NEBULA_OK or -errno equivalent.
+ */
+int nebula_io_spdk_open_tcp(const char *ip, const char *port,
+                            const char *nqn, struct nebula_io **out);
 
 #endif /* NEBULA_IO_SPDK_H */

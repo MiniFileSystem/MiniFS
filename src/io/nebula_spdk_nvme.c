@@ -131,17 +131,14 @@ static int poll_until_done(struct nebula_spdk_ns *h, struct io_ctx *ctx)
 
 /* ---------- public API ----------------------------------------------- */
 
-int nebula_spdk_nvme_probe(const char *traddr, struct nebula_spdk_ns **out)
+int nebula_spdk_nvme_probe_trid(const struct spdk_nvme_transport_id *trid,
+                                struct nebula_spdk_ns **out)
 {
-    if (!out) return -1;
+    if (!trid || !out) return -1;
 
-    struct probe_ctx ctx = { .traddr = traddr, .result = NULL };
+    struct probe_ctx ctx = { .traddr = trid->traddr, .result = NULL };
 
-    struct spdk_nvme_transport_id trid;
-    memset(&trid, 0, sizeof(trid));
-    trid.trtype = SPDK_NVME_TRANSPORT_PCIE;
-
-    int rc = spdk_nvme_probe(&trid, &ctx, probe_cb, attach_cb, NULL);
+    int rc = spdk_nvme_probe(trid, &ctx, probe_cb, attach_cb, NULL);
     if (rc != 0) {
         fprintf(stderr, "[nebula_spdk] spdk_nvme_probe failed: %d\n", rc);
         return -1;
@@ -154,6 +151,17 @@ int nebula_spdk_nvme_probe(const char *traddr, struct nebula_spdk_ns **out)
 
     *out = ctx.result;
     return 0;
+}
+
+int nebula_spdk_nvme_probe(const char *traddr, struct nebula_spdk_ns **out)
+{
+    struct spdk_nvme_transport_id trid;
+    memset(&trid, 0, sizeof(trid));
+    trid.trtype = SPDK_NVME_TRANSPORT_PCIE;
+    if (traddr)
+        snprintf(trid.traddr, sizeof(trid.traddr), "%s", traddr);
+
+    return nebula_spdk_nvme_probe_trid(&trid, out);
 }
 
 uint64_t nebula_spdk_nvme_capacity_blocks(const struct nebula_spdk_ns *ns)

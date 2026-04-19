@@ -13,6 +13,8 @@
 #include "nebula_spdk_env.h"
 #include "nebula/nebula_types.h"
 
+#include <spdk/nvme.h>
+
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -108,19 +110,11 @@ static const struct nebula_io_ops spdk_ops = {
 
 /* ---------- public factory ------------------------------------------- */
 
-int nebula_io_spdk_open(const char *traddr, struct nebula_io **out)
+/* Shared: wrap a probed ns into a nebula_io handle */
+static int open_from_ns(struct nebula_spdk_ns *ns, struct nebula_io **out)
 {
-    if (!out) return -EINVAL;
-
-    struct nebula_spdk_ns *ns = NULL;
-    if (nebula_spdk_nvme_probe(traddr, &ns) != 0) return -ENODEV;
-
-    /* Allocate DMA bounce buffer */
     void *bounce = nebula_spdk_dma_alloc(SPDK_BOUNCE_BYTES, NEBULA_BLOCK_SIZE);
-    if (!bounce) {
-        nebula_spdk_nvme_close(ns);
-        return -ENOMEM;
-    }
+    if (!bounce) { nebula_spdk_nvme_close(ns); return -ENOMEM; }
 
     struct nebula_io_spdk *s = calloc(1, sizeof(*s));
     if (!s) {
@@ -136,4 +130,54 @@ int nebula_io_spdk_open(const char *traddr, struct nebula_io **out)
 
     *out = &s->base;
     return NEBULA_OK;
+}
+
+int nebula_io_spdk_open_tcp(const char *ip, const char *port,
+                            const char *nqn, struct nebula_io **out)
+{
+    if (!ip || !port || !out) return -EINVAL;
+
+    struct spdk_nvme_transport_id trid;
+    memset(&trid, 0, sizeof(trid));
+
+    trid.trtype = SPDK_NVME_TRANSPORT_TCP;
+    trid.adrfam = SPDK_NVMF_ADRFAM_IPV4;
+    snprintf(trid.traddr,  sizeof(trid.traddr),  "%s", ip);
+    snprintf(trid.trsvcid, sizeof(trid.trsvcid), "%s", port);
+    if (nqn)
+        snprintf(trid.subnqn, sizeof(trid.subnqn), "%s", nqn);
+
+    struct nebula_spdk_ns *ns = NULL;
+    if (nebula_spdk_nvme_probe_trid(&trid, &ns) != 0) return -ENODEV;
+
+    return open_from_ns(ns, out);
+}
+
+int nebula_io_spdk_open(const char *traddr, struct nebula_io **out)
+{
+    if (!out) return -EINVAL;
+
+    /* Auto-detect TCP format: "tcp:<ip>:<port>:<nqn>" */
+    if (traddr && strncmp(traddr, "tcp:", 4) == 0) {
+        /* Parse tcp:ip:port:nqn — nqn may contain colons so split on first 3 */
+        char buf[512];
+        snprintf(buf, sizeof(buf), "%s", traddr + 4);   /* skip "tcp:" */
+
+        char *ip   = buf;
+        char *port = strchr(ip, ':');
+        if (!port) return -EINVAL;
+        *port++ = '\0';
+
+        char *nqn  = strchr(port, ':');
+        if (!nqn)  return -EINVAL;
+        *nqn++ = '\0';
+
+        return nebula_io_spdk_open_tcp(ip, port, nqn, out);
+    }
+
+    /* PCIe path (existing behaviour) */
+    struct nebula_spdk_ns *ns = NULL;
+    if (nebula_spdk_nvme_probe(traddr, &ns) != 0) return -ENODEV;
+
+    return open_from_ns(ns, out);
 }

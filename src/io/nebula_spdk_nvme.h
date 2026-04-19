@@ -18,14 +18,23 @@
 struct nebula_spdk_ns;
 
 /*
- * Probe for NVMe controllers.
- * traddr: PCIe transport address string, e.g. "0000:01:00.0".
+ * Probe for NVMe controllers over PCIe.
+ * traddr: PCIe BDF string e.g. "0000:01:00.0".
  *         Pass NULL to probe all available local NVMe devices.
  * out:    receives the first usable namespace handle on success.
- *
  * Returns 0 on success, -1 on failure.
  */
 int nebula_spdk_nvme_probe(const char *traddr, struct nebula_spdk_ns **out);
+
+/*
+ * Probe using a fully populated spdk_nvme_transport_id.
+ * Supports PCIe, TCP, RDMA — caller fills in trtype/traddr/trsvcid/subnqn.
+ * out: receives the namespace handle on success.
+ * Returns 0 on success, -1 on failure.
+ */
+struct spdk_nvme_transport_id;   /* forward-declare — avoid pulling spdk/nvme.h here */
+int nebula_spdk_nvme_probe_trid(const struct spdk_nvme_transport_id *trid,
+                                struct nebula_spdk_ns **out);
 
 /*
  * Return the namespace capacity in 4 KiB logical blocks.
