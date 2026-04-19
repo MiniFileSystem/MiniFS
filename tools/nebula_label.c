@@ -17,6 +17,7 @@
 #include "../src/util/uuid.h"
 #include "../src/util/log.h"
 #include "../src/nebula/nebula_mbr.h"
+#include "../src/nebula/nebula_superblock.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -121,6 +122,31 @@ static int cmd_write(const char *path, const char *uuid_arg,
         fprintf(stderr, "MBR write: %s\n", strerror(-rc));
         nebula_io_close(io); return 1;
     }
+
+    /* Keep MBR and SB UUIDs in sync. If a valid head SB is present,
+     * rewrite both head and tail with the new UUID and fresh checksum. */
+    struct nebula_superblock sb;
+    int sb_rc = nebula_superblock_read(io, /*LBA 1*/ 1ULL, &sb);
+    if (sb_rc == NEBULA_OK) {
+        memcpy(sb.device_uuid, uuid, 16);
+        sb.checksum = 0;
+        sb.checksum = nebula_superblock_checksum(&sb);
+
+        int w1 = nebula_io_write(io, 1ULL,            1, &sb);
+        int w2 = nebula_io_write(io, sb.sb_tail_lba,  1, &sb);
+        if (w1 != NEBULA_OK || w2 != NEBULA_OK) {
+            fprintf(stderr, "SB sync failed (head=%d tail=%d)\n", w1, w2);
+            nebula_io_close(io); return 1;
+        }
+        printf("Superblocks (head @LBA 1 + tail @LBA %lu) updated to match MBR.\n",
+               (unsigned long)sb.sb_tail_lba);
+    } else {
+        /* No valid SB yet (e.g. labelling a fresh image before mkfs).
+         * That's fine; fsck/mount will still work once formatted. */
+        NEB_WARN("No valid superblock found; only MBR was updated. "
+                 "Run nebula_format to complete the filesystem.");
+    }
+
     (void)nebula_io_flush(io);
     nebula_io_close(io);
 
