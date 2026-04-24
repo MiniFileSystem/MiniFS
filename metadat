@@ -1,0 +1,143 @@
+Status CREATE(string path) {
+
+  auto parent = dirname(path);
+  auto name   = basename(path);
+
+  if (!metadata.exists(parent))
+      return ERROR_PARENT_NOT_FOUND;
+
+  if (metadata.exists(path))
+      return ERROR_ALREADY_EXISTS;
+
+  uint64_t oid = allocate_object_id();
+
+  ObjectMetadata md = {
+      oid, 0, now(), now(), 1, {}
+  };
+
+  TXG txg = txg_begin();
+
+  txg.metadata_updates.push_back({oid, md});
+  txg.metadata_updates.push_back({parent, add_dir_entry(name, oid)});
+
+  // WAL (optional for CREATE)
+  if (WAL_ENABLED) {
+      wal.append(txg.serialize());
+      if (SYNC_MODE) wal.sync();
+  }
+
+  // Apply metadata (memtable)
+  for (auto& m : txg.metadata_updates) {
+      metadata.put(m.first, m.second);
+  }
+
+  return SUCCESS;
+}
+
+Status WRITE(string path, buffer data) {
+
+  auto oid = metadata.lookup(path);
+  if (!oid) return ERROR_NOT_FOUND;
+
+  auto md = metadata.get(oid);
+
+  TXG txg = txg_begin();
+
+  vector<DataPointer> refs;
+
+  // -----------------------------
+  // STEP 1: DATA PATH (append)
+  // -----------------------------
+  for (auto segment : split(data, APPEND_SIZE)) {
+
+      Chunk& chunk = chunk_engine.get_active();
+
+      auto [chunk_id, idx, offset, len] =
+          chunk_engine.append(chunk, segment);
+
+      DataPointer ref = {
+          now(), chunk_id, idx, len
+      };
+
+      refs.push_back(ref);
+
+      allocator.log_alloc(chunk_id, len);
+
+      spdk_submit_write(chunk_map[chunk_id] + offset, segment);
+
+      if (chunk.is_full()) {
+          chunk_engine.seal(chunk);
+      }
+  }
+
+  // -----------------------------
+  // STEP 2: DURABILITY BARRIER
+  // -----------------------------
+  if (!spdk_wait_all())
+      return ERROR_IO_FAILURE;
+
+  // -----------------------------
+  // STEP 3: PREPARE METADATA
+  // -----------------------------
+  md.ptrs.insert(md.ptrs.end(), refs.begin(), refs.end());
+  md.size += data.size();
+  md.version++;
+  md.mtime = now();
+
+  txg.metadata_updates.push_back({oid, md});
+
+  // -----------------------------
+  // STEP 4: WAL (CRITICAL)
+  // -----------------------------
+  if (WAL_ENABLED) {
+      wal.append(txg.serialize());
+      if (SYNC_MODE) wal.sync();
+  }
+
+  // -----------------------------
+  // STEP 5: APPLY METADATA
+  // -----------------------------
+  for (auto& m : txg.metadata_updates) {
+      metadata.put(m.first, m.second);
+  }
+
+  return SUCCESS;
+}
+
+
+buffer READ(string path, uint64_t offset, uint64_t size) {
+
+  auto oid = metadata.lookup(path);
+  if (!oid) throw ERROR_NOT_FOUND;
+
+  auto md = metadata.get(oid);
+
+  if (offset + size > md.size)
+      throw ERROR_OUT_OF_RANGE;
+
+  buffer result;
+  uint64_t remaining = size;
+
+  for (auto& ref : md.ptrs) {
+
+      if (remaining == 0)
+          break;
+
+      auto lba = chunk_map[ref.chunk_id];
+
+      auto entry = chunk_engine.get_index(ref.chunk_id, ref.chunk_idx);
+
+      auto phys = lba + entry.offset;
+
+      auto data = spdk_read(phys, entry.length);
+
+      auto sliced = slice(data, offset, remaining);
+
+      result.append(sliced);
+
+      remaining -= sliced.size();
+  }
+
+  return result;
+}
+
