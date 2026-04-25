@@ -161,6 +161,43 @@ if(NEBULA_ENABLE_ROCKSDB)
         nebula_rocksdb nebula_core ${ROCKSDB_LIBRARIES} pthread)
     set_target_properties(nebula_db_bench PROPERTIES CXX_STANDARD 17)
 
+    # =======================================================================
+    # ObjectStore: multi-tenant KV-style API on top of nebula_core + RocksDB.
+    # Implements the Multi-Tenant Object Store design (CREATE / WRITE / READ
+    # via TXG; chunk-based, append-only data plane; metadata in RocksDB).
+    # =======================================================================
+    add_library(nebula_objstore STATIC
+        src/objstore/common.cc
+        src/objstore/metadata.cc
+        src/objstore/chunk.cc
+        src/objstore/object_store.cc)
+    target_include_directories(nebula_objstore PUBLIC
+        include src ${ROCKSDB_INCLUDE_DIRS})
+    target_link_libraries(nebula_objstore PUBLIC
+        nebula_core ${ROCKSDB_LIBRARIES} pthread)
+    set_target_properties(nebula_objstore PROPERTIES CXX_STANDARD 17)
+
+    add_executable(objstore_demo tools/objstore_demo.cc)
+    target_include_directories(objstore_demo PRIVATE
+        include src ${ROCKSDB_INCLUDE_DIRS})
+    target_link_libraries(objstore_demo PRIVATE
+        nebula_objstore nebula_core ${ROCKSDB_LIBRARIES} pthread)
+    set_target_properties(objstore_demo PROPERTIES CXX_STANDARD 17)
+
+    add_executable(objstore_tests tools/objstore_tests.cc)
+    target_include_directories(objstore_tests PRIVATE
+        include src ${ROCKSDB_INCLUDE_DIRS})
+    target_link_libraries(objstore_tests PRIVATE
+        nebula_objstore nebula_core ${ROCKSDB_LIBRARIES} pthread)
+    set_target_properties(objstore_tests PROPERTIES CXX_STANDARD 17)
+
+    add_executable(objstore_bench tools/objstore_bench.cc)
+    target_include_directories(objstore_bench PRIVATE
+        include src ${ROCKSDB_INCLUDE_DIRS})
+    target_link_libraries(objstore_bench PRIVATE
+        nebula_objstore nebula_core ${ROCKSDB_LIBRARIES} pthread)
+    set_target_properties(objstore_bench PROPERTIES CXX_STANDARD 17)
+
     # If SPDK is also enabled, link it into the test and format tool
     if(NEBULA_ENABLE_SPDK)
         target_compile_definitions(nebula_rocksdb_test PRIVATE NEBULA_ENABLE_SPDK)
